@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>G66 知识图谱</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Segoe UI","Microsoft YaHei",sans-serif;background:#0f1117;color:#c9d1d9;height:100vh;display:flex;overflow:hidden}
+a{color:#58a6ff;text-decoration:none}a:hover{text-decoration:underline}
+
+/* 左侧面板：列表 + 详情 */
+#left{width:420px;min-width:320px;background:#161b22;border-right:1px solid #30363d;display:flex;flex-direction:column}
+#search-box{padding:12px;border-bottom:1px solid #30363d}
+#search-box input{width:100%;padding:8px 12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;font-size:14px;outline:none}
+#search-box input:focus{border-color:#58a6ff}
+#stats{padding:8px 12px;font-size:12px;color:#8b949e;border-bottom:1px solid #30363d;display:flex;gap:16px;flex-wrap:wrap}
+#stats b{color:#c9d1d9}
+
+/* 列表和详情用 tab 切换 */
+#left-tabs{display:flex;border-bottom:1px solid #30363d;flex-shrink:0}
+#left-tabs .tab{flex:1;padding:8px;text-align:center;font-size:12px;color:#8b949e;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s}
+#left-tabs .tab.active{color:#c9d1d9;border-bottom-color:#58a6ff}
+#left-tabs .tab:hover{color:#c9d1d9}
+#tab-list,#tab-detail{flex:1;overflow-y:auto;display:none}
+#tab-list{display:block}
+#tab-detail{padding:16px}
+#tab-detail .empty-state{padding:40px 20px;text-align:center;color:#8b949e}
+
+/* 列表项 */
+.node-item{padding:10px 12px;border-bottom:1px solid #21262d;cursor:pointer;transition:background .15s}
+.node-item:hover{background:#1c2128}
+.node-item.active{background:#1f2937;border-left:3px solid #58a6ff}
+.node-item .title{font-size:13px;font-weight:500;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node-item .meta{font-size:11px;color:#8b949e}
+.type-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
+
+/* 详情面板 */
+#detail h2{font-size:18px;margin-bottom:12px;color:#f0f6fc;line-height:1.4;word-break:break-all}
+#detail .section{margin-bottom:16px}
+#detail .section h3{font-size:12px;color:#8b949e;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px}
+#detail .meta-row{display:flex;margin-bottom:4px;font-size:13px}
+#detail .meta-row .label{color:#8b949e;width:70px;flex-shrink:0}
+#detail .meta-row .value{color:#c9d1d9;word-break:break-all}
+#detail .summary{font-size:13px;line-height:1.6;color:#c9d1d9}
+#detail .keywords{display:flex;flex-wrap:wrap;gap:4px}
+#detail .keyword{background:#21262d;border:1px solid #30363d;padding:2px 8px;border-radius:12px;font-size:11px;color:#8b949e}
+#detail .edge-link{display:block;padding:6px 10px;margin:2px 0;background:#21262d;border-radius:4px;font-size:13px;cursor:pointer;transition:background .15s}
+#detail .edge-link:hover{background:#30363d}
+#detail .edge-link .edge-name{color:#58a6ff}
+#detail .edge-link .edge-context{color:#8b949e;font-size:11px;margin-left:8px}
+#detail .edge-link .edge-type{font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px}
+#detail .edge-link .edge-type.explicit{background:#1f3a5f;color:#58a6ff}
+#detail .edge-link .edge-type.semantic{background:#2a1f3d;color:#bc8cff}
+#detail .back-btn{display:inline-block;margin-bottom:12px;font-size:12px;color:#8b949e;cursor:pointer}
+#detail .back-btn:hover{color:#c9d1d9}
+
+/* 右侧力向图 */
+#center{flex:1;position:relative;display:flex;flex-direction:column;min-width:300px}
+#graph-canvas{flex:1;display:block;cursor:grab;background:#0f1117}
+#graph-canvas:active{cursor:grabbing}
+#graph-hint{position:absolute;bottom:12px;left:12px;font-size:11px;color:#6e7681;pointer-events:none;user-select:none;z-index:5}
+#graph-controls{position:absolute;top:12px;right:12px;z-index:10;display:flex;gap:6px}
+#graph-controls button{background:#21262d;border:1px solid #30363d;color:#c9d1d9;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;transition:background .15s}
+#graph-controls button:hover{background:#30363d}
+#graph-controls button.active{background:#1f3a5f;border-color:#58a6ff;color:#58a6ff}
+</style>
+</head>
+<body>
+
+<div id="left">
+  <div id="search-box"><input type="text" id="search" placeholder="搜索文档标题、关键词、摘要..."></div>
+  <div id="stats">
+    <span>节点: <b id="stat-nodes">0</b></span>
+    <span>边: <b id="stat-edges">0</b></span>
+    <span>连通: <b id="stat-connected">0</b></span>
+    <span>孤立: <b id="stat-isolated">0</b></span>
+  </div>
+  <div id="left-tabs">
+    <div class="tab active" id="tab-btn-list">文档列表</div>
+    <div class="tab" id="tab-btn-detail">文档详情</div>
+  </div>
+  <div id="tab-list"></div>
+  <div id="tab-detail"><div class="empty-state">← 点击文档或图中节点查看详情</div></div>
+</div>
+<div id="center">
+  <canvas id="graph-canvas"></canvas>
+  <div id="graph-controls">
+    <button id="toggle-labels" title="显示/隐藏节点文字">文字</button>
+    <button id="btn-all" title="清除选中，全局点亮">全局点亮</button>
+    <button id="toggle-graph" title="收起/展开图谱">收起</button>
+  </div>
+  <div id="graph-hint">滚轮缩放 · 拖拽平移 · 点击节点查看详情</div>
+</div>
+
+<script>
+var GRAPH_DATA = __DATA__;
+var nodes = GRAPH_DATA.nodes || [];
+var edges = GRAPH_DATA.edges || [];
+var nodeMap = {};
+var graphVisible = true;
+var showLabels = false;
+nodes.forEach(function(n) { nodeMap[n.id] = n; });
+
+// 真实计算连通数（不从 meta 读取，避免不一致）
+var _connected = {};
+edges.forEach(function(e) { _connected[e.from] = 1; _connected[e.to] = 1; });
+var _connectedCount = Object.keys(_connected).length;
+
+document.getElementById("stat-nodes").textContent = nodes.length;
+document.getElementById("stat-edges").textContent = edges.length;
+document.getElementById("stat-connected").textContent = _connectedCount;
+document.getElementById("stat-isolated").textContent = nodes.length - _connectedCount;
+
+function esc(s) {
+  if (!s) return "";
+  s = String(s);
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ========== Tab 切换 ==========
+var tabBtnList = document.getElementById("tab-btn-list");
+var tabBtnDetail = document.getElementById("tab-btn-detail");
+var tabList = document.getElementById("tab-list");
+var tabDetail = document.getElementById("tab-detail");
+
+function showTab(which) {
+  if (which === 'list') {
+    tabBtnList.classList.add('active'); tabBtnDetail.classList.remove('active');
+    tabList.style.display = 'block'; tabDetail.style.display = 'none';
+  } else {
+    tabBtnList.classList.remove('active'); tabBtnDetail.classList.add('active');
+    tabList.style.display = 'none'; tabDetail.style.display = 'block';
+  }
+}
+tabBtnList.addEventListener("click", function() { showTab('list'); });
+tabBtnDetail.addEventListener("click", function() { showTab('detail'); });
+
+// ========== 左侧列表 ==========
+var searchInput = document.getElementById("search");
+var nodeListEl = document.getElementById("tab-list");
+var activeNodeId = null;
+
+function renderList(filter) {
+  filter = filter || "";
+  var q = filter.toLowerCase();
+  var list = nodes.filter(function(n) {
+    if (!q) return true;
+    return (n.title||"").toLowerCase().indexOf(q) >= 0 ||
+      (n.keywords||[]).some(function(k){return k.toLowerCase().indexOf(q)>=0;}) ||
+      (n.summary||"").toLowerCase().indexOf(q) >= 0 ||
+      (n.id||"").toLowerCase().indexOf(q) >= 0;
+  }).sort(function(a,b){ return (b.edgeCount||0) - (a.edgeCount||0); });
+  nodeListEl.innerHTML = list.map(function(n) {
+    var cls = n.id === activeNodeId ? " node-item active" : "node-item";
+    return '<div class="'+cls+'" data-nid="'+esc(n.id)+'">' +
+      '<div class="title"><span class="type-dot" style="background:'+n._color+'"></span>'+esc(n.title)+'</div>' +
+      '<div class="meta">'+(n.edgeCount||0)+' 关联 &middot; '+esc((n.category||n.indexFile||"").substring(0,40))+'</div>' +
+    '</div>';
+  }).join("");
+}
+renderList();
+searchInput.addEventListener("input", function() { renderList(searchInput.value); });
+
+nodeListEl.addEventListener("click", function(e) {
+  var el = e.target;
+  while (el && el !== this) {
+    var nid = el.getAttribute("data-nid");
+    if (nid) { selectNode(nid); return; }
+    el = el.parentElement;
+  }
+});
+
+// ========== 文档详情 ==========
+function selectNode(nodeId) {
+  activeNodeId = nodeId;
+  var n = nodeMap[nodeId];
+  if (!n) return;
+  showTab('detail');
+
+  var outgoing = edges.filter(function(e){ return e.from === nodeId; });
+  var incoming = edges.filter(function(e){ return e.to === nodeId; });
+
+  var html = '<div id="detail">' +
+    '<span class="back-btn" id="back-btn">← 返回列表</span>' +
+    '<h2>'+esc(n.title)+'</h2>' +
+    '<div class="section"><h3>元数据</h3>' +
+      '<div class="meta-row"><span class="label">类型</span><span class="value"><span class="type-dot" style="background:'+n._color+'"></span>'+esc(n.type||"?")+'</span></div>' +
+      '<div class="meta-row"><span class="label">节点ID</span><span class="value" style="font-family:monospace;font-size:11px">'+esc(n.id)+'</span></div>' +
+      (n.source ? '<div class="meta-row"><span class="label">来源</span><span class="value"><a href="'+esc(n.source)+'" target="_blank">'+esc(n.source.substring(0,70))+'</a></span></div>' : "") +
+      (n.date ? '<div class="meta-row"><span class="label">更新</span><span class="value">'+esc(n.date)+'</span></div>' : "") +
+      (n.category ? '<div class="meta-row"><span class="label">分类</span><span class="value">'+esc(n.category)+'</span></div>' : "") +
+    '</div>' +
+    (n.summary ? '<div class="section"><h3>内容概要</h3><div class="summary">'+esc(n.summary)+'</div></div>' : "") +
+    ((n.keywords||[]).length > 0 ? '<div class="section"><h3>关键词</h3><div class="keywords">'+n.keywords.map(function(k){return '<span class="keyword">'+esc(k)+'</span>'}).join("")+'</div></div>' : "") +
+    (outgoing.length > 0 ? '<div class="section"><h3>引用关联 ('+outgoing.length+')</h3>'+outgoing.map(function(e){
+      var t = nodeMap[e.to];
+      var etype = e.type || 'explicit';
+      return '<div class="edge-link" data-nid="'+esc(e.to)+'"><span class="edge-name">→ '+esc(e.name||'')+'</span><span class="edge-context">'+esc((e.context||"").substring(0,60))+'</span><span class="edge-type '+etype+'">'+etype+'</span>'+(t?'<div style="color:#8b949e;font-size:11px;margin-top:2px">'+esc(t.title||"")+'</div>':"")+'</div>';
+    }).join("")+'</div>' : "") +
+    (incoming.length > 0 ? '<div class="section"><h3>被引用 ('+incoming.length+')</h3>'+incoming.map(function(e){
+      var f = nodeMap[e.from];
+      var etype = e.type || 'explicit';
+      return '<div class="edge-link" data-nid="'+esc(e.from)+'"><span class="edge-name">← '+esc(e.name||'')+'</span><span class="edge-type '+etype+'">'+etype+'</span>'+(f?'<div style="color:#8b949e;font-size:11px;margin-top:2px">'+esc(f.title)+'</div>':esc(e.from))+'</div>';
+    }).join("")+'</div>' : "") +
+    (n.indexFile ? '<div class="section" style="margin-top:12px;padding-top:12px;border-top:1px solid #30363d"><span style="font-size:11px;color:#8b949e">索引文件: '+esc(n.indexFile)+'</span></div>' : "") +
+  '</div>';
+  tabDetail.innerHTML = html;
+  renderList(searchInput.value);
+
+  // 返回按钮
+  var backBtn = document.getElementById("back-btn");
+  if (backBtn) backBtn.addEventListener("click", function() { showTab('list'); });
+}
+
+// 详情面板事件委托
+tabDetail.addEventListener("click", function(e) {
+  var el = e.target;
+  while (el && el !== this) {
+    var nid = el.getAttribute("data-nid");
+    if (nid) { selectNode(nid); return; }
+    el = el.parentElement;
+  }
+});
+
+// ========== Canvas 力导向图 ==========
+var canvas = document.getElementById("graph-canvas");
+var ctx = canvas.getContext("2d");
+var W = 0, H = 0, dpr = window.devicePixelRatio || 1;
+var viewX = 0, viewY = 0, viewScale = 1;
+var simNodes = [], simEdges = [], simMap = {};
+var simWarm = 1;
+
+function getR(n) { return Math.max(5, Math.min(16, 3 + (n.edgeCount||0)*1.5)); }
+
+function initSim() {
+  // 显示所有有边的节点 + 前 30 个孤立节点
+  var cIds = {};
+  edges.forEach(function(e){ cIds[e.from]=1; cIds[e.to]=1; });
+  var iso = nodes.filter(function(n){ return !cIds[n.id]; })
+    .sort(function(a,b){ return (b.edgeCount||0)-(a.edgeCount||0); }).slice(0,30);
+  var vis = {};
+  nodes.forEach(function(n){ if (cIds[n.id] || iso.indexOf(n)>=0) vis[n.id]=1; });
+  simNodes = nodes.filter(function(n){ return vis[n.id]; }).map(function(n){
+    return {
+      id: n.id, title: n.title, color: n._color, edgeCount: n.edgeCount||0,
+      radius: getR(n),
+      x: W/2 + (Math.random()-0.5)*400,
+      y: H/2 + (Math.random()-0.5)*400,
+      vx: 0, vy: 0
+    };
+  });
+  simMap = {}; simNodes.forEach(function(n){ simMap[n.id]=n; });
+  simEdges = edges.filter(function(e){ return simMap[e.from] && simMap[e.to]; })
+    .map(function(e){ return { source: simMap[e.from], target: simMap[e.to], type: e.type }; });
+  simWarm = 1;
+}
+
+function resize() {
+  var r = canvas.getBoundingClientRect();
+  W = r.width; H = r.height;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+
+function step() {
+  if (simNodes.length === 0) return;
+  var n = simNodes.length;
+  simWarm *= 0.997;
+  if (simWarm < 0.01) simWarm = 0.01;
+
+  var REP = 1200, LINK = 120, LK = 0.025, CK = 0.0015, DAMP = 0.82;
+  // 冷却后保持最小力度，避免节点收缩
+  var forceScale = simWarm > 0.05 ? simWarm : 0.05;
+
+  for (var i = 0; i < n; i++) {
+    for (var j = i+1; j < n; j++) {
+      var a = simNodes[i], b = simNodes[j];
+      var dx = b.x - a.x, dy = b.y - a.y;
+      var d2 = dx*dx + dy*dy;
+      if (d2 < 100) d2 = 100;
+      var f = REP / d2 * forceScale;
+      var dist = Math.sqrt(d2);
+      a.vx -= dx/dist * f; a.vy -= dy/dist * f;
+      b.vx += dx/dist * f; b.vy += dy/dist * f;
+    }
+  }
+  for (var i = 0; i < simEdges.length; i++) {
+    var e = simEdges[i];
+    var dx = e.target.x - e.source.x, dy = e.target.y - e.source.y;
+    var dist = Math.sqrt(dx*dx+dy*dy) || 1;
+    var f = (dist - LINK) * LK * forceScale;
+    e.source.vx += dx/dist * f; e.source.vy += dy/dist * f;
+    e.target.vx -= dx/dist * f; e.target.vy -= dy/dist * f;
+  }
+  var cx = W/2, cy = H/2;
+  for (var i = 0; i < n; i++) {
+    var s = simNodes[i];
+    s.vx += (cx - s.x) * CK * forceScale;
+    s.vy += (cy - s.y) * CK * forceScale;
+    s.vx *= DAMP;
+    s.vy *= DAMP;
+    s.x += s.vx;
+    s.y += s.vy;
+  }
+}
+
+function draw() {
+  ctx.clearRect(0,0,W,H);
+  ctx.save();
+  ctx.translate(viewX, viewY);
+  ctx.scale(viewScale, viewScale);
+
+  var hl = null;
+  if (activeNodeId) {
+    hl = {}; hl[activeNodeId] = 1;
+    for (var i = 0; i < simEdges.length; i++) {
+      var e = simEdges[i];
+      if (e.source.id === activeNodeId) hl[e.target.id] = 1;
+      if (e.target.id === activeNodeId) hl[e.source.id] = 1;
+    }
+  }
+
+  // 边
+  ctx.lineWidth = 0.6 / viewScale;
+  for (var i = 0; i < simEdges.length; i++) {
+    var e = simEdges[i];
+    if (activeNodeId && (e.source.id === activeNodeId || e.target.id === activeNodeId)) continue;
+    var isSoft = e.type === 'semantic';
+    ctx.strokeStyle = hl ? (isSoft ? "rgba(188,140,255,0.1)" : "rgba(48,54,61,0.2)") : (isSoft ? "rgba(188,140,255,0.7)" : "rgba(88,166,255,0.3)");
+    if (isSoft) ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(e.source.x, e.source.y);
+    ctx.lineTo(e.target.x, e.target.y);
+    ctx.stroke();
+    if (isSoft) ctx.setLineDash([]);
+  }
+  if (activeNodeId) {
+    ctx.lineWidth = 1.5 / viewScale;
+    for (var i = 0; i < simEdges.length; i++) {
+      var e = simEdges[i];
+      if (e.source.id === activeNodeId || e.target.id === activeNodeId) {
+        var isSoft = e.type === 'semantic';
+        ctx.strokeStyle = isSoft ? "#bc8cff" : "#58a6ff";
+        if (isSoft) ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(e.source.x, e.source.y);
+        ctx.lineTo(e.target.x, e.target.y);
+        ctx.stroke();
+        if (isSoft) ctx.setLineDash([]);
+      }
+    }
+  }
+
+  // 节点 + 文字
+  for (var i = 0; i < simNodes.length; i++) {
+    var s = simNodes[i], isA = s.id === activeNodeId;
+    var dim = hl && !hl[s.id];
+    if (dim) ctx.globalAlpha = 0.25;
+    if (isA) {
+      ctx.beginPath(); ctx.arc(s.x,s.y,s.radius+4,0,Math.PI*2);
+      ctx.fillStyle = "rgba(88,166,255,0.25)"; ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(s.x,s.y,s.radius,0,Math.PI*2);
+    ctx.fillStyle = s.color; ctx.fill();
+    ctx.strokeStyle = isA ? "#f0f6fc" : "#21262d";
+    ctx.lineWidth = isA ? 2/viewScale : 1/viewScale;
+    ctx.stroke();
+    // 文字：开关开启时或选中节点时显示
+    if (showLabels || isA) {
+      ctx.fillStyle = isA ? "#f0f6fc" : "#8b949e";
+      ctx.font = (isA ? "bold 11px " : "10px ") + '"Segoe UI","Microsoft YaHei",sans-serif';
+      ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      ctx.fillText((s.title||"").substring(0,20), s.x + s.radius + 3, s.y);
+    }
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+
+function loop() {
+  step();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function toWorld(sx, sy) { return { x:(sx-viewX)/viewScale, y:(sy-viewY)/viewScale }; }
+function pickNode(wx, wy) {
+  for (var i = simNodes.length-1; i >= 0; i--) {
+    var n = simNodes[i];
+    if ((wx-n.x)*(wx-n.x)+(wy-n.y)*(wy-n.y) <= (n.radius+3)*(n.radius+3)) return n;
+  }
+  return null;
+}
+
+var isPan = false, dragN = null, lx = 0, ly = 0;
+function heat() { simWarm = Math.max(simWarm, 0.15); }
+
+canvas.addEventListener("mousedown", function(e) {
+  var p = toWorld(e.offsetX, e.offsetY);
+  var hit = pickNode(p.x, p.y);
+  if (hit) {
+    dragN = hit;
+    hit.vx = 0; hit.vy = 0;
+    heat();
+  } else {
+    isPan = true;
+  }
+  lx = e.offsetX; ly = e.offsetY;
+});
+canvas.addEventListener("mousemove", function(e) {
+  if (dragN) {
+    var p = toWorld(e.offsetX, e.offsetY);
+    dragN.x = p.x; dragN.y = p.y;
+    heat();
+  } else if (isPan) {
+    viewX += e.offsetX - lx; viewY += e.offsetY - ly;
+    lx = e.offsetX; ly = e.offsetY;
+    heat();
+  } else {
+    var p = toWorld(e.offsetX, e.offsetY);
+    canvas.style.cursor = pickNode(p.x,p.y) ? "pointer" : "grab";
+  }
+});
+canvas.addEventListener("mouseup", function() { isPan = false; dragN = null; });
+canvas.addEventListener("mouseleave", function() { isPan = false; dragN = null; });
+canvas.addEventListener("click", function(e) {
+  var p = toWorld(e.offsetX, e.offsetY);
+  var hit = pickNode(p.x, p.y);
+  if (hit) selectNode(hit.id);
+});
+canvas.addEventListener("wheel", function(e) {
+  e.preventDefault();
+  var f = e.deltaY > 0 ? 0.9 : 1.1;
+  var ns = Math.max(0.15, Math.min(4, viewScale * f));
+  viewX = e.offsetX - (e.offsetX - viewX) * (ns / viewScale);
+  viewY = e.offsetY - (e.offsetY - viewY) * (ns / viewScale);
+  viewScale = ns;
+}, {passive:false});
+
+// 控制按钮
+var togBtn = document.getElementById("toggle-graph");
+togBtn.addEventListener("click", function() {
+  graphVisible = !graphVisible;
+  canvas.style.display = graphVisible ? "block" : "none";
+  togBtn.textContent = graphVisible ? "收起" : "展开";
+  document.getElementById("graph-hint").style.display = graphVisible ? "block" : "none";
+  if (graphVisible) setTimeout(resize, 50);
+});
+
+var labelBtn = document.getElementById("toggle-labels");
+labelBtn.addEventListener("click", function() {
+  showLabels = !showLabels;
+  labelBtn.classList.toggle("active", showLabels);
+  labelBtn.textContent = showLabels ? "文字 ✓" : "文字";
+});
+
+var btnAll = document.getElementById("btn-all");
+btnAll.addEventListener("click", function() {
+  activeNodeId = null;
+  showTab('list');
+  heat();
+});
+
+window.addEventListener("resize", function() { resize(); });
+window.addEventListener("DOMContentLoaded", function() {
+  resize();
+  initSim();
+  loop();
+});
+</script>
+</body>
+</html>

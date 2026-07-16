@@ -1,0 +1,31 @@
+# 数据产物（自动生成）
+src/data/
+src/db/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Node
+node_modules/
+
+# 模型文件（需自行下载）
+models/m3e-base/
+models/*.bin
+models/*.safetensors
+models/*.msgpack
+models/*.h5
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 图谱可视化（自动生成）
+graph.html
+知识图谱-总索引地图.md
+硬链接查表.md
