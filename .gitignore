@@ -25,7 +25,6 @@ models/*.h5
 .DS_Store
 Thumbs.db
 
-# 图谱可视化（自动生成）
-graph.html
+# 图谱可视化 + 索引地图（自动生成）
 知识图谱-总索引地图.md
 硬链接查表.md
