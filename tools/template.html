@@ -270,22 +270,33 @@ function step() {
   simWarm *= 0.997;
   if (simWarm < 0.01) simWarm = 0.01;
 
-  var REP = 1200, LINK = 120, LK = 0.025, CK = 0.0015, DAMP = 0.82;
-  // 冷却后保持最小力度，避免节点收缩
+  var REP = 800, LINK = 120, LK = 0.025, CK = 0.0015, DAMP = 0.82;
   var forceScale = simWarm > 0.05 ? simWarm : 0.05;
 
+  // 节点质量：基于 edgeCount，范围 1~3（不要太极端）
+  if (!simNodes[0]._mass) {
+    for (var i = 0; i < n; i++) {
+      simNodes[i]._mass = Math.min(3, 1 + (simNodes[i].edgeCount || 0) / 30);
+    }
+  }
+
+  // 斥力：质量加权（大节点推小节点更远）
   for (var i = 0; i < n; i++) {
     for (var j = i+1; j < n; j++) {
       var a = simNodes[i], b = simNodes[j];
       var dx = b.x - a.x, dy = b.y - a.y;
       var d2 = dx*dx + dy*dy;
       if (d2 < 100) d2 = 100;
-      var f = REP / d2 * forceScale;
       var dist = Math.sqrt(d2);
-      a.vx -= dx/dist * f; a.vy -= dy/dist * f;
-      b.vx += dx/dist * f; b.vy += dy/dist * f;
+      var f = REP / d2 * forceScale;
+      var totalMass = a._mass + b._mass;
+      a.vx -= dx/dist * f * (b._mass / totalMass);
+      a.vy -= dy/dist * f * (b._mass / totalMass);
+      b.vx += dx/dist * f * (a._mass / totalMass);
+      b.vy += dy/dist * f * (a._mass / totalMass);
     }
   }
+  // 弹簧力
   for (var i = 0; i < simEdges.length; i++) {
     var e = simEdges[i];
     var dx = e.target.x - e.source.x, dy = e.target.y - e.source.y;
@@ -294,11 +305,13 @@ function step() {
     e.source.vx += dx/dist * f; e.source.vy += dy/dist * f;
     e.target.vx -= dx/dist * f; e.target.vy -= dy/dist * f;
   }
+  // 中心引力：大质量节点引力略弱，自然成为外围小节点的锚点
   var cx = W/2, cy = H/2;
   for (var i = 0; i < n; i++) {
     var s = simNodes[i];
-    s.vx += (cx - s.x) * CK * forceScale;
-    s.vy += (cy - s.y) * CK * forceScale;
+    var m = 1 / s._mass;
+    s.vx += (cx - s.x) * CK * forceScale * m;
+    s.vy += (cy - s.y) * CK * forceScale * m;
     s.vx *= DAMP;
     s.vy *= DAMP;
     s.x += s.vx;
