@@ -45,6 +45,26 @@ git clone https://huggingface.co/moka-ai/m3e-base
 # 下载后可以移动到 models/m3e-base 以便离线使用
 ```
 
+### 2b. 让 AI Agent 学会使用这套工具
+
+项目自带两个 Skill（`skills/` 目录下），安装到你的 AI Agent 中即可自动触发工作流：
+
+```bash
+# ZCode: 复制到用户 skills 目录
+cp -r skills/kb-generator ~/.zcode/skills/
+cp -r skills/kb-searcher ~/.zcode/skills/
+
+# Claude Code / Codex / 其他支持 skills 的工具:
+# 复制到对应平台的 skills 目录即可
+```
+
+安装后，对 Agent 说"把这篇文档加入知识库"会自动触发 **kb-generator** 工作流（读文档→提取链接→写索引→建图谱→生成报告），说"知识库里搜一下"会触发 **kb-searcher**（关键词匹配→图谱扩散→可解释路径检索）。
+
+| Skill | 触发场景 | 用途 |
+|-------|---------|------|
+| `kb-generator` | "把这篇文档加入知识库" / "扩充知识图谱" | 索引构建 + 图谱嵌入完整工作流 |
+| `kb-searcher` | "知识库里搜一下" / "查找文档" | 关键词匹配 → 图谱扩散 → 可解释检索路径 |
+
 ### 3. 创建索引文档
 
 参考 `知识库/001_示例索引节点.md`，为你的文档创建标准化的索引文档。
